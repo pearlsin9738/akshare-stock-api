@@ -1,10 +1,10 @@
-# main.py (AKShare + 全优化版 3.0.2)
+# main.py (AKShare + 全优化版 3.0.3)
 import os
 import time
 import akshare as ak
 import pandas as pd
 from datetime import datetime, time as dt_time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 from fastapi import FastAPI, Security, HTTPException, Request, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -17,10 +17,11 @@ from cachetools import cached, TTLCache
 
 # ----------- 基础配置 -----------
 class Config:
-    VERSION = "3.0.2"
+    VERSION = "3.0.3"
     TITLE   = "A 股数据 API (AKShare 增强版)"
     DESC    = "提供实时行情与日线数据，含健康检查与交易时间提示"
     CONTACT = {"name": "YourName", "email": "you@example.com"}
+    SERVER_URL = "https://akshare-stock-api.onrender.com"  # 添加服务器URL配置
 
 # 创建不同数据源的缓存
 realtime_cache = TTLCache(maxsize=100, ttl=60)   # 实时数据缓存1分钟
@@ -32,6 +33,12 @@ app = FastAPI(
     description=Config.DESC,
     version=Config.VERSION,
     contact=Config.CONTACT,
+    servers=[
+        {
+            "url": Config.SERVER_URL,
+            "description": "生产环境"
+        }
+    ],  # 添加服务器配置
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -57,7 +64,7 @@ class StockQuote(BaseModel):
     warning: Optional[str] = Field(None, description="交易时间提示")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {  # 修改为 json_schema_extra 避免警告
             "example": {
                 "symbol": "000001.SZ",
                 "price": 11.43,
@@ -81,7 +88,7 @@ class DailyQuote(BaseModel):
     trade_date: str   = Field(..., description="交易日期")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {  # 修改为 json_schema_extra 避免警告
             "example": {"symbol": "000001.SZ", "close": 11.43, "change_pct": 0.26, "trade_date": "20251010"}
         }
 
@@ -165,6 +172,7 @@ def root():
         "docs": "/docs",
         "health": "/health",
         "ready": "/ready",
+        "server_url": Config.SERVER_URL,  # 添加服务器URL信息
         "endpoints": {
             "实时行情": "/get_stock_quote?symbol=000001.SZ",
             "日线行情": "/get_daily_quote?symbol=000001.SZ",
@@ -220,7 +228,7 @@ async def readiness_check():
 @limiter.limit("20/minute")
 async def get_stock_quote(
     request: Request,
-    symbol: str = Query(..., description="股票代码，如 000001.SZ"),  # 改为 Query
+    symbol: str = Query(..., description="股票代码，如 000001.SZ"),
     credentials: HTTPAuthorizationCredentials = Security(security),
 ):
     if credentials.scheme != "Bearer" or credentials.credentials != BEARER_TOKEN:
@@ -267,7 +275,7 @@ async def get_stock_quote(
 @limiter.limit("20/minute")
 async def get_daily_quote(
     request: Request,
-    symbol: str = Query(..., description="股票代码，如 000001.SZ"),  # 改为 Query
+    symbol: str = Query(..., description="股票代码，如 000001.SZ"),
     credentials: HTTPAuthorizationCredentials = Security(security),
 ):
     if credentials.scheme != "Bearer" or credentials.credentials != BEARER_TOKEN:
